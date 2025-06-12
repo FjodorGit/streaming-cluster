@@ -1,29 +1,22 @@
+#[cfg(feature = "example")]
+pub mod example;
+
 use core::f32;
 
 pub trait Metrizable {
-    type Representer: Clone;
+    type Representer;
     fn representation(&self) -> Self::Representer;
     fn distance(some: &Self::Representer, other: &Self::Representer) -> f32;
 }
 
-struct ClusterPoint<'a, T: Metrizable> {
-    item: &'a T,
+struct ClusterPoint<T: Metrizable> {
+    item: T,
     repr: T::Representer,
     weight: usize,
 }
 
-impl<'a, T: Metrizable> Clone for ClusterPoint<'a, T> {
-    fn clone(&self) -> Self {
-        Self {
-            item: self.item,
-            repr: self.repr.clone(),
-            weight: self.weight,
-        }
-    }
-}
-
-impl<'a, T: Metrizable> ClusterPoint<'a, T> {
-    pub fn new(item: &'a T, repr: T::Representer) -> Self {
+impl<T: Metrizable> ClusterPoint<T> {
+    pub fn new(item: T, repr: T::Representer) -> Self {
         Self {
             item,
             repr,
@@ -31,11 +24,15 @@ impl<'a, T: Metrizable> ClusterPoint<'a, T> {
         }
     }
 
+    pub fn item(self) -> T {
+        self.item
+    }
+
     pub fn add_point(&mut self) {
         self.weight += 1;
     }
 
-    pub fn merge_point(&mut self, other_cluster: &ClusterPoint<'_, T>) {
+    pub fn merge_point(&mut self, other_cluster: &ClusterPoint<T>) {
         self.weight += other_cluster.weight;
     }
 
@@ -44,26 +41,33 @@ impl<'a, T: Metrizable> ClusterPoint<'a, T> {
     }
 }
 
-pub struct StreamingCluster<'a, T: Metrizable> {
+pub struct StreamingCluster<T: Metrizable> {
     initialization_phase: bool,
     max_cluster_count: usize,
-    clusters_centers: Vec<ClusterPoint<'a, T>>,
+    clusters_centers: Vec<ClusterPoint<T>>,
     phi: f32,
 }
 
-impl<'a, T: Metrizable> StreamingCluster<'a, T> {
+impl<T: Metrizable> StreamingCluster<T> {
     pub fn new(max_cluster_count: usize) -> Self {
         Self {
             initialization_phase: true,
             max_cluster_count,
             clusters_centers: vec![],
-            phi: 0.,
+            phi: f32::MAX,
         }
     }
 
-    pub fn add(&mut self, item: &'a T) {
+    pub fn cluster_points(self) -> Vec<T> {
+        self.clusters_centers
+            .into_iter()
+            .map(|cl| cl.item())
+            .collect()
+    }
+
+    pub fn add(&mut self, item: T) {
         let repr = item.representation();
-        if self.clusters_centers.len() > self.max_cluster_count {
+        if self.initialization_phase && self.clusters_centers.len() > self.max_cluster_count {
             self.initialization_phase = false;
         }
 
@@ -121,15 +125,5 @@ impl<'a, T: Metrizable> StreamingCluster<'a, T> {
             .iter()
             .map(|cluster_point| T::distance(cluster_point.repr(), repr))
             .reduce(f32::min)
-    }
-}
-
-#[cfg(test)]
-mod test {
-
-    #[test]
-    fn run_test() {
-        let mut lsh = LshMem::<_, f32>::new(9, 10, 10).mips(4, 0.83, 3).seed(42);
-        lsh.store_vec(v);
     }
 }
